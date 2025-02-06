@@ -15,10 +15,14 @@ namespace DynaPlex::Models {
 	namespace perishable_systems {
 		void Register(DynaPlex::Registry&);
 	}
+	namespace joint_replenishment {
+		void Register(DynaPlex::Registry&);
+	}
 	void RegistrationManager::RegisterAll(DynaPlex::Registry& registry) {
 		lost_sales::Register(registry);
 		bin_packing::Register(registry);
 		order_picking::Register(registry);
+		joint_replenishment::Register(registry);
 		perishable_systems::Register(registry);
 	}
 }

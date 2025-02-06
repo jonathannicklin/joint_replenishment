@@ -20,7 +20,7 @@ namespace DynaPlex::Models {
 			else {
 				vars.Add("horizon_type", "infinite");
 			}
-			
+
 			return vars;
 		}
 
@@ -45,7 +45,7 @@ namespace DynaPlex::Models {
 					product.orderQty[j] = product.orderQty[j + 1];
 				}
 				product.orderQty[leadTime - 1] = 0; // set last element equal to zero
-			
+
 				// update forecast (can probably do some better forecasting here)
 				product.forecastDeviation = sqrt(smoothingParameter * pow(demand - product.forecastedDemand, 2) +
 					(1.0 - smoothingParameter) * product.forecastDeviation * product.forecastDeviation);
@@ -98,7 +98,7 @@ namespace DynaPlex::Models {
 				return 0.0;
 
 			case actionType::productSelection: { // state is not updated after actionType::productSelection
-			
+
 				// pass if there is not enough capacity to facilitate ordering a single pallet
 				if (state.SKUs[index].palletVolume > remaining) {
 					state.cat = StateCategory::AwaitEvent();
@@ -141,7 +141,7 @@ namespace DynaPlex::Models {
 
 		// get state information
 		MDP::State MDP::GetState(const VarGroup& vars) const {
-			State state{};			
+			State state{};
 			vars.Get("cat", state.cat);
 			vars.Get("usedCapacity", state.usedCapacity);
 			vars.Get("SKUs", state.SKUs);
@@ -151,14 +151,14 @@ namespace DynaPlex::Models {
 		}
 
 		// initialise state variables at start of horizon
-		MDP::State MDP::GetInitialState() const {			
+		MDP::State MDP::GetInitialState() const {
 			State state{};
 			state.SKUs = std::vector<SKU>{};
 			state.SKUs.reserve(nrProducts);
 
 			// creates multiple SKU objects equal to nrProducts
 			for (size_t i = 0; i < nrProducts; i++) {
-				SKU item{}; 
+				SKU item{};
 				item.skuNumber = i;
 				item.forecastedDemand = initialForecast[i];
 				item.forecastDeviation = initialSigma[i];
@@ -185,11 +185,11 @@ namespace DynaPlex::Models {
 
 			// start by selecting a product to produce
 			state.cat = StateCategory::AwaitAction(0);
-			
+
 			state.orderItem = 0;
 			state.usedCapacity = 0;
 			state.remainingEvents = 100;
- 
+
 			return state;
 		}
 
@@ -210,10 +210,10 @@ namespace DynaPlex::Models {
 			config.Get("nrProducts", nrProducts);
 			config.Get("isNonStationary", isNonStationary);
 			config.Get("maxPallets", maxPallets);
-			
+
 			// build demandProb 2D array
 			for (int64_t i = 0; i < nrProducts; i++) {
-				std::vector<double> buildDemandArray(10,0); // assuming that no more than 10 pallets ordered at once
+				std::vector<double> buildDemandArray(10, 0); // assuming that no more than 10 pallets ordered at once
 				config.Get("SKU_" + std::to_string(i), buildDemandArray);
 				demandProb.push_back(buildDemandArray);
 			}
@@ -303,14 +303,14 @@ namespace DynaPlex::Models {
 				if (state.SKUs[index].palletVolume > remaining) {
 					return false;
 				}
-				
+
 				return currentDecision == 0 && state.SKUs[index].orderQty[leadTime - 1] == 0; // returns true if  current decision is productSelection, item not previously ordered
 
 			case actionType::quantitySelection: {
 				if (state.SKUs[state.orderItem].palletVolume > remaining) {
 					return false;
 				}
-				
+
 				return currentDecision == 1 && state.SKUs[state.orderItem].orderQty[leadTime - 1] == 0; // returns true if current decision is quantitySelection, item not previously ordered
 			}
 			default:

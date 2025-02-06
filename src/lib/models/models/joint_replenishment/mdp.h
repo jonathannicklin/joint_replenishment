@@ -4,10 +4,10 @@
 
 namespace DynaPlex::Models {
 	namespace joint_replenishment {/*must be consistent everywhere for complete mdp definition and associated policies and states (if not defined inline).*/
-			
+
 		class MDP {
 
-		public:	
+		public:
 			// define variables separated in types
 			double discountFactor, penaltyCost, holdingCost, orderCost, smoothingParameter, capacity;
 			int64_t nrProducts, leadTime, maxPallets;
@@ -72,7 +72,7 @@ namespace DynaPlex::Models {
 
 			// defines actionsList variable as a integer vector
 			std::vector<int64_t> actionsList;
-			 
+
 			struct State {
 				DynaPlex::StateCategory cat;
 
@@ -114,12 +114,12 @@ namespace DynaPlex::Models {
 
 			// remainder of DynaPlex API
 			double ModifyStateWithAction(State&, int64_t action) const;
-			double ModifyStateWithEvent(State&, const Event& ) const;
+			double ModifyStateWithEvent(State&, const Event&) const;
 			Event GetEvent(DynaPlex::RNG& rng) const;
 			//std::vector<std::tuple<Event,double>> EventProbabilities() const;
 			DynaPlex::VarGroup GetStaticInfo() const;
 			DynaPlex::StateCategory GetStateCategory(const State&) const;
-			bool IsAllowedAction(const State& state, int64_t action) const;			
+			bool IsAllowedAction(const State& state, int64_t action) const;
 			State GetInitialState() const;
 			State GetState(const VarGroup&) const;
 			void RegisterPolicies(DynaPlex::Erasure::PolicyRegistry<MDP>&) const;
