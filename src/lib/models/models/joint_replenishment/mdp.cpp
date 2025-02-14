@@ -163,7 +163,7 @@ namespace DynaPlex::Models {
 				item.forecastedDemand = initialForecast[i];
 				item.forecastDeviation = initialSigma[i];
 				item.inventoryLevel = std::ceil(initialForecast[i] + 1.282 * initialSigma[i]); // base stock 90%; rounded up
-				item.orderProbability = orderRate[i];
+				// item.orderProbability = orderRate[i];
 				item.palletVolume = volume[i];
 				item.orderQty.resize(leadTime, 0);
 				state.SKUs.push_back(item);
@@ -177,7 +177,7 @@ namespace DynaPlex::Models {
 				throw DynaPlex::Error("joint_replenishment :: initial sigma data does not match the number of items");
 			}
 			if (orderRate.size() != nrProducts) {
-				throw DynaPlex::Error("joint_replenishment :: orderProbability data does not match the number of items");
+				throw DynaPlex::Error("joint_replenishment :: orderRate data does not match the number of items");
 			}
 			if (volume.size() != nrProducts) {
 				throw DynaPlex::Error("joint_replenishment :: pallet volume data does not match the number of items");

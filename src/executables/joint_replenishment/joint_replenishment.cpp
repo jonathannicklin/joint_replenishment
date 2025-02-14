@@ -13,7 +13,6 @@ int main() {
     auto mdp_vars_from_json = DynaPlex::VarGroup::LoadFromFile(file_path);
     auto mdp = dp.GetMDP(mdp_vars_from_json);
 
-
     //for illustration purposes, create a different mdp
     //that is compatible with the first - same number of features, same number of valid actions:
     DynaPlex::MDP different_mdp = dp.GetMDP(mdp_vars_from_json);
@@ -33,7 +32,7 @@ int main() {
     int64_t num_gens = 5;
     DynaPlex::VarGroup dcl_config{
         //just for illustration, so we collect only little data, so DCL will run fast but will not perform well.
-        {"N",10000}, // number of samples
+        {"N",100000}, // number of samples
         {"num_gens",num_gens},
         {"M",1000}, // number of exogenous samples
         {"H", 200},// rollout horizon length

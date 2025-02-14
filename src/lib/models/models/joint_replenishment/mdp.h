@@ -20,7 +20,7 @@ namespace DynaPlex::Models {
 				int64_t skuNumber;
 				double forecastedDemand;
 				double forecastDeviation;
-				double orderProbability;
+				// double orderProbability;
 				double inventoryLevel; // inventory level considers partial pallets
 				// int64_t inTransit; // counter for items in transit
 				std::vector<int64_t> orderQty; // later this will be made into a vector
@@ -30,7 +30,7 @@ namespace DynaPlex::Models {
 				void AddSKUToFeatures(DynaPlex::Features& feats) const {
 					feats.Add(forecastedDemand);
 					feats.Add(forecastDeviation);
-					feats.Add(orderProbability);
+					// feats.Add(orderProbability);
 					feats.Add(inventoryLevel);
 					// feats.Add(inTransit);
 					feats.Add(orderQty);
@@ -43,7 +43,7 @@ namespace DynaPlex::Models {
 					vars.Add("skuNumber", skuNumber);
 					vars.Add("forecastedDemand", forecastedDemand);
 					vars.Add("forecastDeviation", forecastDeviation);
-					vars.Add("orderProbability", orderProbability);
+					// vars.Add("orderProbability", orderProbability);
 					vars.Add("inventoryLevel", inventoryLevel);
 					// vars.Add("inTransit", inTransit);
 					vars.Add("orderQty", orderQty);
@@ -59,7 +59,7 @@ namespace DynaPlex::Models {
 					vars.Get("skuNumber", skuNumber);
 					vars.Get("forecastedDemand", forecastedDemand);
 					vars.Get("forecastDeviation", forecastDeviation);
-					vars.Get("orderProbability", orderProbability);
+					// vars.Get("orderProbability", orderProbability);
 					vars.Get("inventoryLevel", inventoryLevel);
 					// vars.Get("inTransit", inTransit);
 					vars.Get("orderQty", orderQty);
@@ -84,7 +84,7 @@ namespace DynaPlex::Models {
 				int64_t periodOrderingCosts;
 				int64_t periodBackorderCosts;
 				int64_t periodHoldingCosts;
-				int64_t orderItem; // is this not equal to index? what is index?
+				int64_t orderItem;
 
 				// convert State object into a DynaPlex::VarGroup object
 				DynaPlex::VarGroup ToVarGroup() const;
