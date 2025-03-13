@@ -6,8 +6,8 @@
  * - It also simplifies unit_tests, see tests/mdp_unit_tests/*.cpp. 
  */
 {
-    "id": "canOrderPolicy",
-    "reorderPoint": [ 10, 10, 10, 7 ],
-    "canOrderPoint": [ 25, 25, 25, 10 ],
-    "orderUpToLevel": [ 30, 30, 25, 12 ]
+    "id": "periodicReviewPolicy",
+    "reviewPeriod": [4],
+    "reorderPoint": [ 1, 1, 1, 1 ],
+    "orderUpToLevel": [ 23, 25, 25, 25 ]
 }

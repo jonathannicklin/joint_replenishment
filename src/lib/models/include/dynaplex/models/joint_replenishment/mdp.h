@@ -20,21 +20,15 @@ namespace DynaPlex::Models {
 				int64_t skuNumber;
 				double forecastedDemand;
 				double forecastDeviation;
-				// double orderProbability;
-				double inventoryLevel; // inventory level considers partial pallets
-				// int64_t inTransit; // counter for items in transit
-				std::vector<int64_t> orderQty; // later this will be made into a vector
-				double palletVolume;
+				double inventoryLevel;
+				std::vector<int64_t> orderQty;
 
 				// assign SKU features to a DynaPlex::Features object
 				void AddSKUToFeatures(DynaPlex::Features& feats) const {
 					feats.Add(forecastedDemand);
 					feats.Add(forecastDeviation);
-					// feats.Add(orderProbability);
 					feats.Add(inventoryLevel);
-					// feats.Add(inTransit);
 					feats.Add(orderQty);
-					feats.Add(palletVolume);
 				}
 
 				// converts SKU data into a DynaPlex::VarGroup object
@@ -43,11 +37,8 @@ namespace DynaPlex::Models {
 					vars.Add("skuNumber", skuNumber);
 					vars.Add("forecastedDemand", forecastedDemand);
 					vars.Add("forecastDeviation", forecastDeviation);
-					// vars.Add("orderProbability", orderProbability);
 					vars.Add("inventoryLevel", inventoryLevel);
-					// vars.Add("inTransit", inTransit);
 					vars.Add("orderQty", orderQty);
-					vars.Add("palletVolume", palletVolume);
 					return vars;
 				}
 
@@ -59,11 +50,8 @@ namespace DynaPlex::Models {
 					vars.Get("skuNumber", skuNumber);
 					vars.Get("forecastedDemand", forecastedDemand);
 					vars.Get("forecastDeviation", forecastDeviation);
-					// vars.Get("orderProbability", orderProbability);
 					vars.Get("inventoryLevel", inventoryLevel);
-					// vars.Get("inTransit", inTransit);
 					vars.Get("orderQty", orderQty);
-					vars.Get("palletVolume", palletVolume);
 				}
 
 				// compares two SKU objects for equality
@@ -81,10 +69,11 @@ namespace DynaPlex::Models {
 
 				double usedCapacity;
 				int64_t remainingEvents;
-				int64_t periodOrderingCosts;
-				int64_t periodBackorderCosts;
-				int64_t periodHoldingCosts;
+				float periodOrderingCosts;
+				float periodBackorderCosts;
+				float periodHoldingCosts;
 				int64_t orderItem;
+				int64_t periodCount = 1;
 
 				// convert State object into a DynaPlex::VarGroup object
 				DynaPlex::VarGroup ToVarGroup() const;
@@ -96,8 +85,8 @@ namespace DynaPlex::Models {
 			// enumeration class which defines a set of integer constants
 			enum class actionType :int64_t {
 				productSelection,
-				pass,
-				quantitySelection
+				quantitySelection,
+				pass
 			};
 
 			// creates a structure to to represent specific actions with a number
@@ -116,7 +105,6 @@ namespace DynaPlex::Models {
 			double ModifyStateWithAction(State&, int64_t action) const;
 			double ModifyStateWithEvent(State&, const Event&) const;
 			Event GetEvent(DynaPlex::RNG& rng) const;
-			//std::vector<std::tuple<Event,double>> EventProbabilities() const;
 			DynaPlex::VarGroup GetStaticInfo() const;
 			DynaPlex::StateCategory GetStateCategory(const State&) const;
 			bool IsAllowedAction(const State& state, int64_t action) const;

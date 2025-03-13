@@ -1,4 +1,5 @@
-#include "mdp.h"
+// #include "mdp.h"
+#include "dynaplex/models/joint_replenishment/mdp.h"
 #include "dynaplex/erasure/mdpregistrar.h"
 #include "policies.h"
 #include <cmath>
@@ -29,16 +30,20 @@ namespace DynaPlex::Models {
 			double reward = 0.0;
 			state.periodHoldingCosts = 0;
 			state.periodBackorderCosts = 0;
+			state.periodOrderingCosts = 0;
+			bool order = false;
 
 			for (int productID = 0; productID < nrProducts; productID++) {
 				auto& product = state.SKUs[productID];
 				auto demand = event[product.skuNumber];
 
+				// determine if container was ordered
+				if (product.orderQty[leadTime - 1] > 0) {
+					order = true;
+				}
+
 				// update inventory levels
 				product.inventoryLevel += product.orderQty[0] - demand;
-
-				// update number of pallets in transit
-				// product.inTransit -= product.orderQty[0];
 
 				// update orderQty array
 				for (size_t j = 0; j < leadTime - 1; ++j) {
@@ -46,12 +51,18 @@ namespace DynaPlex::Models {
 				}
 				product.orderQty[leadTime - 1] = 0; // set last element equal to zero
 
-				// update forecast (can probably do some better forecasting here)
+				// update forecast
+				product.forecastedDemand = product.forecastedDemand / leadTime; // correct to single-period forecast
+				product.forecastDeviation = product.forecastDeviation / sqrt(leadTime);
+
 				product.forecastDeviation = sqrt(smoothingParameter * pow(demand - product.forecastedDemand, 2) +
 					(1.0 - smoothingParameter) * product.forecastDeviation * product.forecastDeviation);
 
 				product.forecastedDemand = smoothingParameter * demand +
 					(1.0 - smoothingParameter) * product.forecastedDemand;
+
+				product.forecastedDemand = product.forecastedDemand * leadTime; // convert back to forecast over lead time duration
+				product.forecastDeviation = product.forecastDeviation * sqrt(leadTime);
 
 				// calculate reward
 				if (product.inventoryLevel >= 0) {
@@ -61,12 +72,18 @@ namespace DynaPlex::Models {
 				else {
 					reward += penaltyCost * (-product.inventoryLevel);
 					state.periodBackorderCosts += penaltyCost * (-product.inventoryLevel);
+					// product.inventoryLevel = 0; // lost sales instead of backordering
 				}
+			}
+
+			// calculate ordering costs
+			if (order == true) {
+				state.periodOrderingCosts += orderCost;
 			}
 
 			// reset for new period
 			state.usedCapacity = 0;
-			state.periodOrderingCosts = 0;
+			// state.periodOrderingCosts = 0;
 
 			// move in transit inventory one step ahead in time
 			state.cat = StateCategory::AwaitAction(0);
@@ -78,6 +95,8 @@ namespace DynaPlex::Models {
 			if (state.remainingEvents == 0) {
 				state.cat = StateCategory::Final();
 			}
+
+			state.periodCount += 1;
 
 			return reward;
 		}
@@ -100,7 +119,7 @@ namespace DynaPlex::Models {
 			case actionType::productSelection: { // state is not updated after actionType::productSelection
 
 				// pass if there is not enough capacity to facilitate ordering a single pallet
-				if (state.SKUs[index].palletVolume > remaining) {
+				if (volume[index] > remaining) {
 					state.cat = StateCategory::AwaitEvent();
 				}
 
@@ -108,16 +127,15 @@ namespace DynaPlex::Models {
 				else {
 					// update product being ordered, necessary to connect decision stages
 					state.orderItem = index;
-					state.cat = StateCategory::AwaitAction(1);
+					state.cat = StateCategory::AwaitAction(1); // quantitySelection
 				}
 				return 0.0;
 			}
 
 			case actionType::quantitySelection: {
 				state.SKUs[state.orderItem].orderQty[leadTime - 1] = index; // update state to reflect chosen orderQty
-				// state.SKUs[state.orderItem].inTransit += index; // update inTransit variable
-				state.cat = StateCategory::AwaitAction(0); // move back to productSelection
-				state.usedCapacity += index * state.SKUs[state.orderItem].palletVolume; // convert number of items ordered into volume
+				state.cat = StateCategory::AwaitAction(0); // productSelection
+				state.usedCapacity += index * volume[state.orderItem]; // convert number of items ordered into volume
 				return 0.0;
 			}
 
@@ -163,8 +181,6 @@ namespace DynaPlex::Models {
 				item.forecastedDemand = initialForecast[i];
 				item.forecastDeviation = initialSigma[i];
 				item.inventoryLevel = std::ceil(initialForecast[i] + 1.282 * initialSigma[i]); // base stock 90%; rounded up
-				// item.orderProbability = orderRate[i];
-				item.palletVolume = volume[i];
 				item.orderQty.resize(leadTime, 0);
 				state.SKUs.push_back(item);
 			}
@@ -195,6 +211,7 @@ namespace DynaPlex::Models {
 
 		// sets all static information when initialising MDP from mdp.h
 		MDP::MDP(const VarGroup& config) {
+
 			// init state variables
 			config.Get("discountFactor", discountFactor);
 			config.Get("penaltyCost", penaltyCost);
@@ -224,15 +241,13 @@ namespace DynaPlex::Models {
 				actionsList.push_back(i);
 			}
 
-			// pass action
-			actions.push_back({ actionType::pass,0 });
-			actionsList.push_back(0);
-
-			// order quantity actions
 			for (int64_t i = 1; i <= maxPallets; i++) {
 				actionsList.push_back(i);
 				actions.push_back({ actionType::quantitySelection, i });
 			}
+
+			actions.push_back({ actionType::pass,0 });
+			actionsList.push_back(0);
 		}
 
 		// generate demand vector
@@ -274,8 +289,12 @@ namespace DynaPlex::Models {
 		}
 
 		void MDP::RegisterPolicies(DynaPlex::Erasure::PolicyRegistry<MDP>& registry) const {
-			registry.Register<EmptyPolicy>("empty_policy",
-				"This policy is a place-holder, and throws a NotImplementedError when asked for an action. ");
+
+			registry.Register<canOrderPolicy>("canOrderPolicy",
+				"This policy is replicates following a rule-based can order policy. ");
+
+			registry.Register<periodicReviewPolicy>("periodicReviewPolicy",
+				"This policy is replicates following a rule-based periodic review order policy. ");
 		}
 
 		DynaPlex::StateCategory MDP::GetStateCategory(const State& state) const {
@@ -300,14 +319,14 @@ namespace DynaPlex::Models {
 
 			case actionType::productSelection:
 				// check amount fits in remaining space
-				if (state.SKUs[index].palletVolume > remaining) {
+				if (volume[index] > remaining) {
 					return false;
 				}
 
 				return currentDecision == 0 && state.SKUs[index].orderQty[leadTime - 1] == 0; // returns true if  current decision is productSelection, item not previously ordered
 
 			case actionType::quantitySelection: {
-				if (state.SKUs[state.orderItem].palletVolume > remaining) {
+				if (volume[state.orderItem] > remaining) {
 					return false;
 				}
 
