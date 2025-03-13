@@ -111,10 +111,15 @@ int evaluate() {
         Trajectory trajectory{ };
         trajectory.RNGProvider.SeedEventStreams(true, rng_seed);
         int64_t sampleNumber = 10400; // define sample horizon
+
+        // get trained DCL policy
+        std::string gen = "3"; // change to correct gen
+        auto filename = dp.System().filepath(mdp->Identifier(), "dcl_policy_gen" + gen); // DynaPlex_IO folder
+        auto path = dp.System().filepath(filename);
+        auto dclPolicy = dp.LoadPolicy(mdp, path);
         
         // initiate state and state policies to evaluate
         std::vector<std::string> evaluatePolicyList = {"canOrderPolicy", "periodicReviewPolicy" };
-        // auto dclPolicy = dp.GetDCL(mdp, mdp->GetPolicy("random"));
         
         for (int64_t k = 0; k < evaluatePolicyList.size(); k++) {
 

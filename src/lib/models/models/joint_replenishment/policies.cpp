@@ -1,7 +1,8 @@
 #include "policies.h"
 #include "dynaplex/models/joint_replenishment/mdp.h"
-// #include "mdp.h"
+#include <cstdlib>
 #include "dynaplex/error.h"
+
 namespace DynaPlex::Models {
 	namespace joint_replenishment  { /*keep this namespace name in line with the name space in which the mdp corresponding to this policy is defined*/
 	
@@ -52,7 +53,8 @@ namespace DynaPlex::Models {
 
 					else {
 						actionSelected.type = MDP::actionType::productSelection;
-						actionSelected.number = productsAllowed[0];
+						int randomIndex = std::rand() % productsAllowed.size();
+						actionSelected.number = productsAllowed[randomIndex];
 						actionIndex = actionSelected.number;
 					}
 				}
@@ -107,6 +109,7 @@ namespace DynaPlex::Models {
 			MDP::actionClass actionSelected{};
 			int64_t actionIndex; // refers to placement of action on actionList
 			std::vector<int64_t> productsAllowed, inventoryPosition(mdp->nrProducts);
+			int64_t orderQuantity;
 
 			if (state.cat.Index() == 0) { // product selection
 
@@ -122,7 +125,9 @@ namespace DynaPlex::Models {
 							inventoryPosition[product] += state.SKUs[product].orderQty[i];
 						}
 
- 						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= reorderPoint[product]) { // need to add logic to determmine if review period is met
+						// add to possible order items if (1) not already ordered (2) inventory position is below reorder point (3) can fit into remaining container space
+						orderQuantity = orderUpToLevel[product] - inventoryPosition[product];
+ 						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= reorderPoint[product] && state.usedCapacity + orderQuantity <= mdp-> capacity) {
 							productsAllowed.push_back(product);
 						}
 					}
@@ -134,9 +139,11 @@ namespace DynaPlex::Models {
 						actionIndex = mdp->nrProducts + mdp->maxPallets;
 					}
 
+					// randomly select from permissible items
 					else {
 						actionSelected.type = MDP::actionType::productSelection;
-						actionSelected.number = productsAllowed[0];
+						int randomIndex = std::rand() % productsAllowed.size();
+						actionSelected.number = productsAllowed[randomIndex];
 						actionIndex = actionSelected.number;
 					}
 				}
