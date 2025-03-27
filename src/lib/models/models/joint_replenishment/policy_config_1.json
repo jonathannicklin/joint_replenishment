@@ -8,6 +8,6 @@
 {
     "id": "periodicReviewPolicy",
     "reviewPeriod": [4],
-    "reorderPoint": [ 1, 1, 1, 1 ],
+    "reorderPoint": [ 5, 5, 5, 5 ],
     "orderUpToLevel": [ 23, 25, 25, 25 ]
 }

@@ -79,11 +79,11 @@ namespace DynaPlex::Models {
 			// calculate ordering costs
 			if (order == true) {
 				state.periodOrderingCosts += orderCost;
+				reward += orderCost;
 			}
 
 			// reset for new period
 			state.usedCapacity = 0;
-			// state.periodOrderingCosts = 0;
 
 			// move in transit inventory one step ahead in time
 			state.cat = StateCategory::AwaitAction(0);
@@ -103,6 +103,9 @@ namespace DynaPlex::Models {
 
 		double MDP::ModifyStateWithAction(MDP::State& state, int64_t action) const {
 			if (!IsAllowedAction(state, action)) {
+				auto currentDecision = state.cat.Index();
+				std::cout << "used capacity (" << state.usedCapacity << ")";
+				std::cout << "period count (" << state.periodCount << ")";
 				DynaPlex::VarGroup stateInfo = state.ToVarGroup();
 				std::cout << stateInfo.Dump() << std::endl;
 				std::cout << "this action (" << action << ") should not be allowed.";
@@ -136,6 +139,7 @@ namespace DynaPlex::Models {
 				state.SKUs[state.orderItem].orderQty[leadTime - 1] = index; // update state to reflect chosen orderQty
 				state.cat = StateCategory::AwaitAction(0); // productSelection
 				state.usedCapacity += index * volume[state.orderItem]; // convert number of items ordered into volume
+				
 				return 0.0;
 			}
 
@@ -315,7 +319,12 @@ namespace DynaPlex::Models {
 
 			switch (type) {
 			case actionType::pass:
-				return currentDecision == 0; // returns true if current decision is productSelection
+
+				if (currentDecision != 0) {
+					return false; // change to false when running nn training
+				}
+
+				return true;//returns true if current decision is productSelection
 
 			case actionType::productSelection:
 				// check amount fits in remaining space
@@ -323,14 +332,30 @@ namespace DynaPlex::Models {
 					return false;
 				}
 
-				return currentDecision == 0 && state.SKUs[index].orderQty[leadTime - 1] == 0; // returns true if  current decision is productSelection, item not previously ordered
-
-			case actionType::quantitySelection: {
-				if (volume[state.orderItem] > remaining) {
+				if (currentDecision != 0) {
 					return false;
 				}
 
-				return currentDecision == 1 && state.SKUs[state.orderItem].orderQty[leadTime - 1] == 0; // returns true if current decision is quantitySelection, item not previously ordered
+				if (state.SKUs[index].orderQty[leadTime - 1] != 0) {
+					return false;
+				}
+
+				return true; // returns true if  current decision is productSelection, item not previously ordered
+
+			case actionType::quantitySelection: {
+				if (volume[state.orderItem] * index > remaining) {
+					return false;
+				}
+
+				if (currentDecision != 1) {
+					return false;
+				}
+
+				if (state.SKUs[state.orderItem].orderQty[leadTime - 1] != 0) {
+					return false;
+				}
+
+				return true; // returns true if current decision is quantitySelection, item not previously ordered
 			}
 			default:
 				throw DynaPlex::Error("joint_replenishment :: invalid type in IsAllowedAction");

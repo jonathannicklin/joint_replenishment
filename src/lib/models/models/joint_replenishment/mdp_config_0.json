@@ -1,27 +1,20 @@
-/**
- * MDP configuration file demonstrating a specific MDP configuration.  
- * - Files under models/_subdir_/_filename_.json are copied to DYNAPLEX_IO_ROOT_DIR/IO_DynaPlex/mdp_config_examples/_subdir_/_filename_.json
- *  where executable and mdp_unit_tests look for them. 
- * - Providing MDP configuration files is not required, but serves as documentation. 
- * - It also simplifies unit_tests, see tests/mdp_unit_tests/*.cpp. 
- */
 {
     "id": "joint_replenishment",
     "discountFactor": 0.99,
-    "penaltyCost": 100.0, // cost of not fulfilling demand
-    "holdingCost": 1.9, // cost of holding a pallet in inventory per time period (week)
-    "orderCost": 5000, // cost of ordering a container
-    "leadTime": 20, // lead time expressed in weeks
-    "initialForecast": [ 15.38, 14.56, 9.72, 3.58 ], // forecasted demand over lead time
-    "initialSigma": [ 5.87, 5.24, 4.36, 1.99 ], // standard deviation of demand over lead time
-    "orderRate": [ 0.385, 0.404, 0.359, 0.154 ], // probability of an order being placed
-    "volume": [ 1.22, 1.14, 1.42, 1.00 ], // SKU pallet volume
-    "smoothingParameter": 0.05, // forecasting smoothing parameter
-    "capacity": 65, // container capacity
-    "nrProducts": 4, // number of products
-    "maxPallets":  80, // maximum number of pallets of a single item in an order (reduced action space)
-    "isNonStationary": false, // identifier of stationary demand
-    "SKU_0": [ 0.55, 0.25, 0.07, 0.07, 0.02, 0.02, 0.02, 0.0, 0.0, 0.0 ], // probability mass function (pmf) of demand quantity
+    "penaltyCost": 100.0,
+    "holdingCost": 1.9,
+    "orderCost": 5000,
+    "leadTime": 20,
+    "initialForecast": [ 15.38, 14.56, 9.72, 3.58 ],
+    "initialSigma": [ 5.87, 5.24, 4.36, 1.99 ],
+    "orderRate": [ 0.385, 0.404, 0.359, 0.154 ],
+    "volume": [ 1.22, 1.14, 1.42, 1.00 ],
+    "smoothingParameter": 0.05,
+    "capacity": 65,
+    "nrProducts": 4,
+    "maxPallets":  80,
+    "isNonStationary": false,
+    "SKU_0": [ 0.55, 0.25, 0.07, 0.07, 0.02, 0.02, 0.02, 0.0, 0.0, 0.0 ],
     "SKU_1": [ 0.56, 0.25, 0.1, 0.05, 0.02, 0.02, 0.0, 0.0, 0.0, 0.0 ],
     "SKU_2": [ 0.84, 0.12, 0.02, 0.0, 0.02, 0.0, 0.0, 0.0, 0.0, 0.0 ],
     "SKU_3": [ 0.83, 0.17, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 ]

@@ -17,6 +17,7 @@ namespace DynaPlex::Models {
 			MDP::actionClass actionSelected{};
 			int64_t actionIndex; // refers to the placement of action on actionList
 			std::vector<int64_t> productsAllowed, inventoryPosition(mdp->nrProducts);
+			float totalOrderQuantity;
 
 			if (state.cat.Index() == 0) { // product selection
 
@@ -39,7 +40,10 @@ namespace DynaPlex::Models {
 
 					// check which products have not already been ordered that need to be
 					for (int64_t product = 0; product < mdp->nrProducts; product++) {
-						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= canOrderPoint[product]) {
+
+						totalOrderQuantity = state.usedCapacity + (orderUpToLevel[product] - inventoryPosition[product]) * mdp->volume[product];
+
+						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= canOrderPoint[product] && totalOrderQuantity <= mdp->capacity) {
 							productsAllowed.push_back(product);
 						}
 					}
@@ -87,7 +91,7 @@ namespace DynaPlex::Models {
 					actionIndex = mdp->nrProducts + mdp->maxPallets;
 				}
 				else {
-					actionIndex = mdp->nrProducts + actionSelected.number;
+					actionIndex = mdp->nrProducts + actionSelected.number - 1;
 				}
 			}
 
@@ -109,7 +113,7 @@ namespace DynaPlex::Models {
 			MDP::actionClass actionSelected{};
 			int64_t actionIndex; // refers to placement of action on actionList
 			std::vector<int64_t> productsAllowed, inventoryPosition(mdp->nrProducts);
-			int64_t orderQuantity;
+			float totalOrderQuantity;
 
 			if (state.cat.Index() == 0) { // product selection
 
@@ -126,8 +130,9 @@ namespace DynaPlex::Models {
 						}
 
 						// add to possible order items if (1) not already ordered (2) inventory position is below reorder point (3) can fit into remaining container space
-						orderQuantity = orderUpToLevel[product] - inventoryPosition[product];
- 						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= reorderPoint[product] && state.usedCapacity + orderQuantity <= mdp-> capacity) {
+						totalOrderQuantity = state.usedCapacity + (orderUpToLevel[product] - inventoryPosition[product]) * mdp->volume[product];
+
+ 						if (state.SKUs[product].orderQty[mdp->leadTime - 1] == 0 && inventoryPosition[product] <= reorderPoint[product] && totalOrderQuantity <= mdp-> capacity) {
 							productsAllowed.push_back(product);
 						}
 					}
@@ -176,7 +181,7 @@ namespace DynaPlex::Models {
 					actionIndex = mdp->nrProducts + mdp->maxPallets;
 				}
 				else {
-					actionIndex = mdp->nrProducts + actionSelected.number;
+					actionIndex = mdp->nrProducts + actionSelected.number - 1;
 				}
 			}
 

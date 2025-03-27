@@ -74,6 +74,7 @@ namespace DynaPlex::Models {
 				float periodHoldingCosts;
 				int64_t orderItem;
 				int64_t periodCount = 1;
+				// float discountFactor;
 
 				// convert State object into a DynaPlex::VarGroup object
 				DynaPlex::VarGroup ToVarGroup() const;

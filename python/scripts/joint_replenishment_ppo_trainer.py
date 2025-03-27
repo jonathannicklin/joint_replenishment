@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from dp import dynaplex
 from dp.utils.tianshou.network_wrapper import TianshouModuleWrapper
 from dp.gym.base_env import BaseEnv
-from scripts.networks.lost_sales_actor_critic_mlp import CriticMLP, ActorMLP # i dont have these
+from scripts.networks.joint_replenishment_actor_critic import CriticMLP, ActorMLP
 
 load_mdp_from_file = True
 
@@ -35,22 +35,23 @@ if load_mdp_from_file:
 mdp = dynaplex.get_mdp(**vars)
 
 # Training parameters
-train_args = {"hidden_dim": 64,
+train_args = {"hidden_dim": 512,
+              "n_layers": 3,
               "lr": 1e-3,
               "discount_factor": 0.99,
               # "discount_factor": 1.0,
-              "batch_size": 64,
+              "batch_size": 520,
               "max_batch_size": 0,  # 0 means step_per_collect amount
-              "nr_train_envs": 8,
-              "nr_test_envs": 8,
-              "max_epoch": 3,
-              "step_per_collect": 500,
-              "step_per_epoch": 1000,
+              "nr_train_envs": 24,
+              "nr_test_envs": 24,
+              "max_epoch": 500,
+              "step_per_collect": 520,
+              "step_per_epoch": 520,
               "repeat_per_collect": 2,
-              "replay_buffer_size": 20000,
-              "max_batchsize": 2048,
-              "num_actions_until_done": 1000,   # train environments can be either infinite or finite horizon mdp. 0 means infinite horizon
-              "num_steps_per_test_episode": 1000    # in order to use test environments, episodes should be guaranteed to get to terminations
+              "replay_buffer_size": 1040,
+              "max_batchsize": 520,
+              "num_actions_until_done": 0,   # train environments can be either infinite or finite horizon mdp. 0 means infinite horizon
+              "num_steps_per_test_episode": 520    # in order to use test environments, episodes should be guaranteed to get to terminations
               }
 
 def policy_path():
@@ -99,6 +100,7 @@ if __name__ == '__main__':
         actor_net = ActorMLP(
             input_dim=mdp.num_flat_features(),
             hidden_dim=train_args["hidden_dim"],
+            n_layers=train_args["n_layers"],
             output_dim=mdp.num_valid_actions(),
             min_val=torch.finfo(torch.float).min
         ).to(device)
@@ -107,7 +109,7 @@ if __name__ == '__main__':
         critic_net = CriticMLP(
             input_dim=mdp.num_flat_features(),
             hidden_dim=train_args["hidden_dim"],
-            output_dim=mdp.num_valid_actions(),
+            n_layers=train_args["n_layers"],
             min_val=torch.finfo(torch.float).min
         ).to(device).share_memory()
 
@@ -169,6 +171,9 @@ if __name__ == '__main__':
         result = trainer.run()
         print(f'Finished training!')
 
+    # load can order and periodic review policies from file
+
+    #policies = [dynaplex.load_policy(mdp, policy_path()), mdp.get_policy("canOrderPolicy"), mdp.get_policy("periodicReviewPolicy")]
     policies = [dynaplex.load_policy(mdp, policy_path()), mdp.get_policy("random")]
     comparer = dynaplex.get_comparer(mdp, number_of_trajectories=256, periods_per_trajectory=10000, rng_seed=12)
 

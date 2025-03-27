@@ -1,4 +1,6 @@
 ﻿#include <iostream>
+#include <fstream>
+#include <vector>
 #include "dynaplex/dynaplexprovider.h"
 #include "dynaplex/vargroup.h"
 #include "dynaplex/modelling/discretedist.h"
@@ -6,6 +8,35 @@
 #include "dynaplex/models/joint_replenishment/mdp.h"
 
 using namespace DynaPlex;
+
+void exportToCSV(const std::vector<std::vector<int64_t>>& data, const std::string& filename) {
+    // Open the file in write mode
+    std::ofstream outFile(filename);
+
+    // Check if the file is open
+    if (!outFile.is_open()) {
+        std::cerr << "Error opening file for writing!" << std::endl;
+        return;
+    }
+
+    // Loop through each row and each column to write data into CSV format
+    for (size_t i = 0; i < data.size(); ++i) {
+        for (size_t j = 0; j < data[i].size(); ++j) {
+            // Write the value followed by a comma, but no comma after the last element in a row
+            outFile << data[i][j];
+
+            // Check if this is not the last column, then add a comma
+            if (j != data[i].size() - 1) {
+                outFile << ";";
+            }
+        }
+        // After each row, add a new line
+        outFile << "\n";
+    }
+
+    // Close the file after writing
+    outFile.close();
+}
 
 int train() {
 
@@ -15,7 +46,7 @@ int train() {
         auto& dp = DynaPlexProvider::Get();
         std::string model_name = "joint_replenishment"; // define model name
         std::string mdp_config_name = "mdp_config_" + std::to_string(k) + ".json"; // add model configurations
-        std::string mdp_config_name_testdata = "mdp_config_1.json"; // set up test demand data (change if more mdp environments are tested)
+        std::string mdp_config_name_testdata = "mdp_config_0.json"; // set up test demand data (change if more mdp environments are tested)
 
         // define mdp training environment
         std::string file_path = dp.System().filepath("mdp_config_examples", model_name, mdp_config_name);
@@ -112,25 +143,164 @@ int evaluate() {
         trajectory.RNGProvider.SeedEventStreams(true, rng_seed);
         int64_t sampleNumber = 10400; // define sample horizon
 
-        // get trained DCL policy
-        std::string gen = "3"; // change to correct gen
-        auto filename = dp.System().filepath(mdp->Identifier(), "dcl_policy_gen" + gen); // DynaPlex_IO folder
-        auto path = dp.System().filepath(filename);
-        auto dclPolicy = dp.LoadPolicy(mdp, path);
-        
-        // initiate state and state policies to evaluate
-        std::vector<std::string> evaluatePolicyList = {"canOrderPolicy", "periodicReviewPolicy" };
-        
-        for (int64_t k = 0; k < evaluatePolicyList.size(); k++) {
+        bool ruleBasedEvaluate = false;
+        bool dclEvaluate = true;
+        bool ppoEvaluate = false;
+
+        if (ruleBasedEvaluate == true) {
+
+            // initiate state and state policies to evaluate
+            // std::vector<std::string> evaluatePolicyList = { "canOrderPolicy", "periodicReviewPolicy" };
+            std::vector<std::string> evaluatePolicyList = { "canOrderPolicy"};
+
+            for (int64_t k = 0; k < evaluatePolicyList.size(); k++) {
+
+                // initiate state
+                mdp->InitiateState({ &trajectory,1 });
+
+                // retrieve policy to evaluate
+                std::string policy_config_name = "policy_config_" + std::to_string(k) + ".json"; // 1 = can order 2 = periodic review
+                std::string policy_file_path = dp.System().filepath("mdp_config_examples", model_name, policy_config_name);
+                VarGroup evaluatePolicy = VarGroup::LoadFromFile(policy_file_path);
+                auto policy = mdp->GetPolicy(evaluatePolicy);
+
+                // import data from mdp setup
+                int64_t containerVolume;
+                int64_t penaltyCost;
+                int64_t nrProducts;
+                int64_t leadTime;
+
+                mdp_vars_from_json.Get("capacity", containerVolume);
+                mdp_vars_from_json.Get("penaltyCost", penaltyCost);
+                mdp_vars_from_json.Get("nrProducts", nrProducts);
+                mdp_vars_from_json.Get("leadTime", leadTime);
+
+                // containers for graphing
+                std::vector<std::vector<int64_t>> inventoryPositionsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+                std::vector<std::vector<int64_t>> inventoryLevelsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+
+                // init tracking KPIs
+                float serviceLevel = 0;
+                float fillRate = 0;
+                float periodicity = 0;
+                int64_t backorderCost = 0;
+                int64_t holdingCost = 0;
+                int64_t orderingCost = 0;
+                int64_t unmetDemand = 0;
+                int64_t demand = 0;
+                int64_t totalDemand = 0;
+                int64_t inventoryPosition = 0;
+                std::vector<int64_t> inventoryLevelPrior(nrProducts, 0);
+                std::vector<int64_t> backorderPrior(nrProducts, 0);
+                std::vector<int64_t> backorderPost(nrProducts, 0);
+                std::vector<int64_t> orderQtyPrior(nrProducts, 0);
+                bool final_reached = false;
+
+                // track and calculate KPIs
+                for (int64_t i = 0; i < sampleNumber;) {
+
+                    auto& cat = trajectory.Category;
+                    auto& state = DynaPlex::RetrieveState<underlying_mdp::State>(trajectory.GetState());
+
+                    if (cat.IsAwaitEvent()) {
+                        fillRate += state.usedCapacity / containerVolume; // later divide by number of orders
+
+                        if (state.usedCapacity != 0) {
+                            periodicity += 1; // here we define # orders; later divide by number of sample periods to get periodicity
+                        }
+
+                        for (int64_t j = 0; j < nrProducts; j++) { // store inventory position level before demand
+                            auto& product = state.SKUs[j];
+
+                            inventoryLevelPrior[j] = product.inventoryLevel;
+                            orderQtyPrior[j] = product.orderQty[0]; // when event is incorporated, we lose this information
+                        }
+
+                        mdp->IncorporateEvent({ &trajectory,1 });
+
+                        orderingCost += state.periodOrderingCosts;
+                        holdingCost += state.periodHoldingCosts;
+                        backorderCost += state.periodBackorderCosts;
+
+                        for (int64_t j = 0; j < nrProducts; j++) { // derive demand from previous and current inventory levels
+                            auto& product = state.SKUs[j];
+
+                            demand = inventoryLevelPrior[j] - (product.inventoryLevel - orderQtyPrior[j]);
+                            totalDemand += demand;
+
+                            if (demand != 0) {
+                                if (inventoryLevelPrior[j] < demand && inventoryLevelPrior[j] > 0) {
+                                    unmetDemand += demand - inventoryLevelPrior[j];
+                                }
+                                else if (inventoryLevelPrior[j] < demand && inventoryLevelPrior[j] <= 0) {
+                                    unmetDemand += demand;
+                                }
+                            }
+
+                            inventoryPosition = product.inventoryLevel;
+                            for (int64_t k = 0; k < leadTime; k++) {
+                                inventoryPosition += product.orderQty[k];
+                            }
+
+                            inventoryPositionsOverTime[j][i] = inventoryPosition;
+                            inventoryLevelsOverTime[j][i] = product.inventoryLevel;
+                        }
+                        i++; // count number of sample periods
+                    }
+
+                    else if (cat.IsAwaitAction()) {
+                        policy->SetAction({ &trajectory,1 });
+                        mdp->IncorporateAction({ &trajectory,1 });
+                    }
+
+                    else if (cat.IsFinal()) {
+                        final_reached = true;
+                    }
+                }
+
+                // determine final values
+                holdingCost = holdingCost / sampleNumber;
+                backorderCost = backorderCost / sampleNumber;
+                orderingCost = orderingCost / sampleNumber;
+                fillRate = fillRate / periodicity; // periodicity currently used as order counter
+                periodicity = periodicity / sampleNumber;
+                serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand; // change
+
+                std::cout << "Total demand: " << totalDemand << std::endl;
+                std::cout << "Total demand met: " << totalDemand - unmetDemand << std::endl;
+
+                // store variables after evaluation
+                VarGroup kpis{};
+                kpis.Add("serviceLevel", serviceLevel);
+                kpis.Add("fillRate", fillRate);
+                kpis.Add("periodicity", periodicity);
+                kpis.Add("backorderCost", backorderCost);
+                kpis.Add("holdingCost", holdingCost);
+                kpis.Add("orderingCost", orderingCost);
+                kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
+
+                // output evaluation to a file
+                auto filename = dp.System().filepath("joint_replenishment", "Evaluation", evaluatePolicyList[k] + "_evaluation.json");
+                kpis.SaveToFile(filename);
+
+                // export containers for graphing
+                exportToCSV(inventoryPositionsOverTime, "../../GraphData/inventory_positions_" + evaluatePolicyList[k] + ".csv");
+                exportToCSV(inventoryLevelsOverTime, "../../GraphData/inventory_levels_" + evaluatePolicyList[k] + ".csv");
+            }
+
+        }
+
+        if (dclEvaluate == true) {
+
+            // get trained DCL policy
+            std::string gen = "10"; // change to correct gen
+            std::cout << mdp->Identifier() << std::endl;
+            auto filename = dp.System().filepath(mdp->Identifier(), "dcl_policy_gen" + gen); // DynaPlex_IO folder
+            auto path = dp.System().filepath(filename);
+            auto dclPolicy = dp.LoadPolicy(mdp, path);
 
             // initiate state
             mdp->InitiateState({ &trajectory,1 });
-
-            // retrieve policy to evaluate
-            std::string policy_config_name = "policy_config_" + std::to_string(k) + ".json"; // 1 = can order 2 = periodic review
-            std::string policy_file_path = dp.System().filepath("mdp_config_examples", model_name, policy_config_name);
-            VarGroup evaluatePolicy = VarGroup::LoadFromFile(policy_file_path);
-            auto policy = mdp->GetPolicy(evaluatePolicy);
 
             // import data from mdp setup
             int64_t containerVolume;
@@ -143,17 +313,21 @@ int evaluate() {
             mdp_vars_from_json.Get("nrProducts", nrProducts);
             mdp_vars_from_json.Get("leadTime", leadTime);
 
+            // containers for graphing
+            std::vector<std::vector<int64_t>> inventoryPositionsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+            std::vector<std::vector<int64_t>> inventoryLevelsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+
             // init tracking KPIs
             float serviceLevel = 0;
             float fillRate = 0;
             float periodicity = 0;
-            float testSL;
             int64_t backorderCost = 0;
             int64_t holdingCost = 0;
             int64_t orderingCost = 0;
             int64_t unmetDemand = 0;
             int64_t demand = 0;
             int64_t totalDemand = 0;
+            int64_t inventoryPosition = 0;
             std::vector<int64_t> inventoryLevelPrior(nrProducts, 0);
             std::vector<int64_t> backorderPrior(nrProducts, 0);
             std::vector<int64_t> backorderPost(nrProducts, 0);
@@ -200,12 +374,20 @@ int evaluate() {
                                 unmetDemand += demand;
                             }
                         }
+
+                        inventoryPosition = product.inventoryLevel;
+                        for (int64_t k = 0; k < leadTime; k++) {
+                            inventoryPosition += product.orderQty[k];
+                        }
+
+                        inventoryPositionsOverTime[j][i] = inventoryPosition;
+                        inventoryLevelsOverTime[j][i] = product.inventoryLevel;
                     }
                     i++; // count number of sample periods
                 }
 
                 else if (cat.IsAwaitAction()) {
-                    policy->SetAction({ &trajectory,1 });
+                    dclPolicy->SetAction({ &trajectory,1 });
                     mdp->IncorporateAction({ &trajectory,1 });
                 }
 
@@ -236,8 +418,147 @@ int evaluate() {
             kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
 
             // output evaluation to a file
-            auto filename = dp.System().filepath("joint_replenishment", "Evaluation", evaluatePolicyList[k] + "_evaluation.json");
+            filename = dp.System().filepath("joint_replenishment", "Evaluation", "dcl_evaluation.json");
             kpis.SaveToFile(filename);
+
+            // export containers for graphing
+            exportToCSV(inventoryPositionsOverTime, "../../GraphData/inventory_positions_dcl.csv");
+            exportToCSV(inventoryLevelsOverTime, "../../GraphData/inventory_levels_dcl.csv");
+        }
+
+        if (ppoEvaluate == true) {
+
+            // get trained ppo policy
+            // std::string gen = "2"; // change to correct gen
+            auto filename = dp.System().filepath(mdp->Identifier(), "ppo_policy"); // DynaPlex_IO folder
+            auto path = dp.System().filepath(filename);
+            auto ppoPolicy = dp.LoadPolicy(mdp, path);
+
+            // initiate state
+            mdp->InitiateState({ &trajectory,1 });
+
+            // import data from mdp setup
+            int64_t containerVolume;
+            int64_t penaltyCost;
+            int64_t nrProducts;
+            int64_t leadTime;
+
+            mdp_vars_from_json.Get("capacity", containerVolume);
+            mdp_vars_from_json.Get("penaltyCost", penaltyCost);
+            mdp_vars_from_json.Get("nrProducts", nrProducts);
+            mdp_vars_from_json.Get("leadTime", leadTime);
+
+            // containers for graphing
+            std::vector<std::vector<int64_t>> inventoryPositionsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+            std::vector<std::vector<int64_t>> inventoryLevelsOverTime(nrProducts, std::vector<int64_t>(sampleNumber));
+
+            // init tracking KPIs
+            float serviceLevel = 0;
+            float fillRate = 0;
+            float periodicity = 0;
+            int64_t backorderCost = 0;
+            int64_t holdingCost = 0;
+            int64_t orderingCost = 0;
+            int64_t unmetDemand = 0;
+            int64_t demand = 0;
+            int64_t totalDemand = 0;
+            int64_t inventoryPosition = 0;
+            std::vector<int64_t> inventoryLevelPrior(nrProducts, 0);
+            std::vector<int64_t> backorderPrior(nrProducts, 0);
+            std::vector<int64_t> backorderPost(nrProducts, 0);
+            std::vector<int64_t> orderQtyPrior(nrProducts, 0);
+            bool final_reached = false;
+
+            // track and calculate KPIs
+            for (int64_t i = 0; i < sampleNumber;) {
+
+                auto& cat = trajectory.Category;
+                auto& state = DynaPlex::RetrieveState<underlying_mdp::State>(trajectory.GetState());
+
+                if (cat.IsAwaitEvent()) {
+                    fillRate += state.usedCapacity / containerVolume; // later divide by number of orders
+
+                    if (state.usedCapacity != 0) {
+                        periodicity += 1; // here we define # orders; later divide by number of sample periods to get periodicity
+                    }
+
+                    for (int64_t j = 0; j < nrProducts; j++) { // store inventory position level before demand
+                        auto& product = state.SKUs[j];
+
+                        inventoryLevelPrior[j] = product.inventoryLevel;
+                        orderQtyPrior[j] = product.orderQty[0]; // when event is incorporated, we lose this information
+                    }
+
+                    mdp->IncorporateEvent({ &trajectory,1 });
+
+                    orderingCost += state.periodOrderingCosts;
+                    holdingCost += state.periodHoldingCosts;
+                    backorderCost += state.periodBackorderCosts;
+
+                    for (int64_t j = 0; j < nrProducts; j++) { // derive demand from previous and current inventory levels
+                        auto& product = state.SKUs[j];
+
+                        demand = inventoryLevelPrior[j] - (product.inventoryLevel - orderQtyPrior[j]);
+                        totalDemand += demand;
+
+                        if (demand != 0) {
+                            if (inventoryLevelPrior[j] < demand && inventoryLevelPrior[j] > 0) {
+                                unmetDemand += demand - inventoryLevelPrior[j];
+                            }
+                            else if (inventoryLevelPrior[j] < demand && inventoryLevelPrior[j] <= 0) {
+                                unmetDemand += demand;
+                            }
+                        }
+
+                        inventoryPosition = product.inventoryLevel;
+                        for (int64_t k = 0; k < leadTime; k++) {
+                            inventoryPosition += product.orderQty[k];
+                        }
+
+                        inventoryPositionsOverTime[j][i] = inventoryPosition;
+                        inventoryLevelsOverTime[j][i] = product.inventoryLevel;
+                    }
+                    i++; // count number of sample periods
+                }
+
+                else if (cat.IsAwaitAction()) {
+                    ppoPolicy->SetAction({ &trajectory,1 });
+                    mdp->IncorporateAction({ &trajectory,1 });
+                }
+
+                else if (cat.IsFinal()) {
+                    final_reached = true;
+                }
+            }
+
+            // determine final values
+            holdingCost = holdingCost / sampleNumber;
+            backorderCost = backorderCost / sampleNumber;
+            orderingCost = orderingCost / sampleNumber;
+            fillRate = fillRate / periodicity; // periodicity currently used as order counter
+            periodicity = periodicity / sampleNumber;
+            serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand; // change
+
+            std::cout << "Total demand: " << totalDemand << std::endl;
+            std::cout << "Total demand met: " << totalDemand - unmetDemand << std::endl;
+
+            // store variables after evaluation
+            VarGroup kpis{};
+            kpis.Add("serviceLevel", serviceLevel);
+            kpis.Add("fillRate", fillRate);
+            kpis.Add("periodicity", periodicity);
+            kpis.Add("backorderCost", backorderCost);
+            kpis.Add("holdingCost", holdingCost);
+            kpis.Add("orderingCost", orderingCost);
+            kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
+
+            // output evaluation to a file
+            filename = dp.System().filepath("joint_replenishment", "Evaluation", "ppo_evaluation.json");
+            kpis.SaveToFile(filename);
+
+            // export containers for graphing
+            exportToCSV(inventoryPositionsOverTime, "../../GraphData/inventory_positions_ppo.csv");
+            exportToCSV(inventoryLevelsOverTime, "../../GraphData/inventory_levels_ppo.csv");
         }
     }
 
@@ -250,6 +571,6 @@ int evaluate() {
 
 int main() {
 
-    train();
-    // evaluate();
+    // train();
+    evaluate();
 };

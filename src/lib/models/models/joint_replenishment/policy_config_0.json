@@ -8,6 +8,6 @@
 {
     "id": "canOrderPolicy",
     "reorderPoint": [ 10, 10, 10, 7 ],
-    "canOrderPoint": [ 25, 25, 25, 10 ],
+    "canOrderPoint": [ 25, 25, 24, 10 ],
     "orderUpToLevel": [ 30, 30, 25, 12 ]
 }
