@@ -139,7 +139,7 @@ int evaluate() {
         auto mdp = dp.GetMDP(mdp_vars_from_json);
         using underlying_mdp = DynaPlex::Models::joint_replenishment::MDP;
         std::int64_t rng_seed = 11112014;
-        Trajectory trajectory{ };
+        Trajectory trajectory{};
         trajectory.RNGProvider.SeedEventStreams(true, rng_seed);
         int64_t sampleNumber = 10400; // define sample horizon
 
@@ -569,8 +569,171 @@ int evaluate() {
     return 0;
 }
 
+int heatMap() {
+    try {
+
+        // get model information
+        auto& dp = DynaPlexProvider::Get();
+        // auto& system = dp.System();
+        std::string model_name = "joint_replenishment";
+        std::string mdp_config_name = "mdp_config_0.json";
+
+        std::string file_path = dp.System().filepath("mdp_config_examples", model_name, mdp_config_name);
+        auto mdp_vars_from_json = VarGroup::LoadFromFile(file_path);
+        auto mdp = dp.GetMDP(mdp_vars_from_json);
+
+        auto policy = mdp->GetPolicy("random");
+        
+        bool ruleBasedEvaluate = false;
+        bool dclEvaluate = true;
+        bool ppoEvaluate = false;
+
+        if (ruleBasedEvaluate == true) {
+
+        }
+
+        if (dclEvaluate == true) {
+            // get trained DCL policy
+            std::string gen = "10"; // change to correct gen
+            std::cout << mdp->Identifier() << std::endl;
+            auto filename = dp.System().filepath(mdp->Identifier(), "dcl_policy_gen" + gen); // DynaPlex_IO folder
+            auto path = dp.System().filepath(filename);
+            policy = dp.LoadPolicy(mdp, path); // udpate policy from random
+        }
+
+        if (ppoEvaluate == true) {
+
+        }
+
+        //get some initializing variables from json
+        std::vector<int64_t> initialForecast;
+        std::vector<int64_t> initialSigma;
+        int64_t nrProducts;
+        int64_t leadTime;
+
+        mdp_vars_from_json.Get("initialForecast", initialForecast);
+        mdp_vars_from_json.Get("initialSigma", initialSigma);
+        mdp_vars_from_json.Get("nrProducts", nrProducts);
+        mdp_vars_from_json.Get("leadTime", leadTime);
+
+        // define heat map parameters
+        int64_t item1 = 0;
+        int64_t item2 = 1;
+        int64_t maxInventoryPosition = 60; // set by looking at inventory plot
+
+        // define container variables
+        std::vector<int64_t> actions;
+
+        struct SKU {
+            int64_t skuNumber;
+            double forecastedDemand;
+            double forecastDeviation;
+            double inventoryLevel;
+            std::vector<int64_t> orderQty;
+
+            // assign SKU features to a DynaPlex::Features object
+            void AddSKUToFeatures(DynaPlex::Features& feats) const {
+                feats.Add(forecastedDemand);
+                feats.Add(forecastDeviation);
+                feats.Add(inventoryLevel);
+                feats.Add(orderQty);
+            }
+
+            // converts SKU data into a DynaPlex::VarGroup object
+            DynaPlex::VarGroup ToVarGroup() const {
+                DynaPlex::VarGroup vars;
+                vars.Add("skuNumber", skuNumber);
+                vars.Add("forecastedDemand", forecastedDemand);
+                vars.Add("forecastDeviation", forecastDeviation);
+                vars.Add("inventoryLevel", inventoryLevel);
+                vars.Add("orderQty", orderQty);
+                return vars;
+            }
+
+            // initialise an empty SKU object
+            SKU() {}
+
+            // initialises an SKU object using data from DynaPlex::VarGroup
+            explicit SKU(const DynaPlex::VarGroup& vars) {
+                vars.Get("skuNumber", skuNumber);
+                vars.Get("forecastedDemand", forecastedDemand);
+                vars.Get("forecastDeviation", forecastDeviation);
+                vars.Get("inventoryLevel", inventoryLevel);
+                vars.Get("orderQty", orderQty);
+            }
+
+            // compares two SKU objects for equality
+            bool operator==(const SKU& other) const = default;
+        };
+
+
+        for (int inventoryPosition1 = 0; inventoryPosition1 < maxInventoryPosition; inventoryPosition1++) {
+            for (int inventoryPosition2 = 0; inventoryPosition2 < maxInventoryPosition; inventoryPosition2++) {
+                auto SKUs = std::vector<SKU>{};
+                SKUs.reserve(nrProducts);
+
+                // creates multiple SKU objects equal to nrProducts
+                for (size_t i = 0; i < nrProducts; i++) {
+                    SKU item{};
+                    item.skuNumber = i;
+                    item.forecastedDemand = initialForecast[i];
+                    item.forecastDeviation = initialSigma[i];
+                    if (i == item1) {
+                        item.inventoryLevel = inventoryPosition1;
+                    }
+                    else if (i == item2) {
+                        item.inventoryLevel = inventoryPosition2;
+                    }
+                    else {
+                        item.inventoryLevel = initialForecast[i];
+                    }
+                    item.orderQty.resize(leadTime, 0);
+                    SKUs.push_back(item);
+                }
+                
+                DynaPlex::VarGroup stateVars{
+                    {"cat", StateCategory::AwaitAction().ToVarGroup()}, // change this to ordering 
+                    {"usedCapacity", 0},
+                    {"SKUs", SKUs},
+                    {"remainingEvents", 100},
+                    {"orderItem", item2},
+                    {"periodOrderingCosts", 0},
+                    {"periodHoldingCosts", 0},
+                    {"periodBackorderCosts", 0},
+                    {"periodCount", 1000}
+                };
+
+                auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                //state
+
+                std::vector<Trajectory> trajVec{};
+
+                mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                policy->SetAction(trajVec);
+
+                actions.push_back(trajVec[0].NextAction);
+            };
+
+            //just an example of storing the variables after evaluation
+            VarGroup kpis{};
+            kpis.Add("actions", actions);
+
+            auto filename = dp.System().filepath("joint_replenishment", "Evaluation", "heatmap_items" + std::to_string(item1) + std::to_string(item2) + ".json");
+            kpis.SaveToFile(filename);
+        }
+    }
+
+    catch (const DynaPlex::Error& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
+
+    return 0;
+}
+
 int main() {
 
     // train();
-    evaluate();
+    // evaluate();
+    heatMap();
 };
