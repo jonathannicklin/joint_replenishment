@@ -17,16 +17,13 @@ from scripts.networks.joint_replenishment_actor_critic import CriticMLP, ActorML
 load_mdp_from_file = True
 
 if load_mdp_from_file:
-    # This script assumes the desired mdp characteristics are specified in a file with a name of type mdp_config_{MDP_VERSION_NUMBER}.json
     folder_name = "joint_replenishment"  # the name of the folder where the json file is located
     mdp_version_number = 0
-    # this returns path/to/IO_DynaPlex/mdp_config_examples/lost_sales/mdp_config_[..].json:
     path_to_json = dynaplex.filepath("mdp_config_examples", folder_name, f"mdp_config_{mdp_version_number}.json")
 
-    # Global variables used to initialize the experiment (notice the parsed json file should not contain any commented line)
     try:
         with open(path_to_json, "r") as input_file:
-            vars = json.load(input_file)    # vars can be initialized manually with something like
+            vars = json.load(input_file)
     except FileNotFoundError:
         raise FileNotFoundError(f"File {path_to_json} not found. Please make sure the file exists and try again.")
     except:
@@ -38,20 +35,20 @@ mdp = dynaplex.get_mdp(**vars)
 train_args = {"hidden_dim": 512,
               "n_layers": 3,
               "lr": 1e-3,
+              "entropy_coef": 0.1,
               "discount_factor": 0.99,
-              # "discount_factor": 1.0,
-              "batch_size": 520,
-              "max_batch_size": 0,  # 0 means step_per_collect amount
-              "nr_train_envs": 24,
-              "nr_test_envs": 24,
+              "batch_size": 1040,
+              "max_batch_size": 0,
+              "nr_train_envs": 48,  # Increased from 24 to 48
+              "nr_test_envs": 48,   # Increased from 24 to 48
               "max_epoch": 500,
-              "step_per_collect": 520,
-              "step_per_epoch": 520,
-              "repeat_per_collect": 2,
+              "step_per_collect": 1040,
+              "step_per_epoch": 1040,
+              "repeat_per_collect": 4,
               "replay_buffer_size": 1040,
-              "max_batchsize": 520,
-              "num_actions_until_done": 0,   # train environments can be either infinite or finite horizon mdp. 0 means infinite horizon
-              "num_steps_per_test_episode": 520    # in order to use test environments, episodes should be guaranteed to get to terminations
+              "max_batchsize": 1040,
+              "num_actions_until_done": 0,
+              "num_steps_per_test_episode": 1040
               }
 
 def policy_path():
@@ -61,8 +58,8 @@ def policy_path():
 def save_best_fn(policy):
     save_path = policy_path()
     dynaplex.save_policy(policy.actor.wrapped_module,
-                   {'input_type': 'dict', 'num_inputs': mdp.num_flat_features(), 'num_outputs': mdp.num_valid_actions()},
-                   save_path)
+                         {'input_type': 'dict', 'num_inputs': mdp.num_flat_features(), 'num_outputs': mdp.num_valid_actions()},
+                         save_path)
 
 def get_env():
     return BaseEnv(mdp, train_args["num_actions_until_done"])
@@ -71,10 +68,6 @@ def get_test_env():
     return BaseEnv(mdp, train_args["num_steps_per_test_episode"])
 
 def preprocess_function(**kwargs):
-    """
-    Observations contain the mask as part of a dictionary.
-    This function ensures that the data gathered in training and testing are in the correct format.
-    """
     if "obs" in kwargs:
         obs_with_tensors = [
             {"obs": torch.from_numpy(obs['obs']).to(torch.float).to(device=device),
@@ -93,7 +86,7 @@ if __name__ == '__main__':
 
     train = True
     if train:
-        model_name = "ppo_model_dict.pt"     # used for tensorboard logging
+        model_name = "ppo_model_dict.pt"     
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # define actor network structure
@@ -122,44 +115,68 @@ if __name__ == '__main__':
         # define scheduler
         scheduler = ExponentialLR(optim, 0.99)
 
-        # define PPO policy
-        policy = ts.policy.PPOPolicy(TianshouModuleWrapper(actor_net), critic_net, optim,
-                                     discount_factor=train_args["discount_factor"],
-                                     max_batchsize=train_args["max_batchsize"], # max batch size for GAE estimation, default to 256
-                                     value_clip=True,
-                                     dist_fn=torch.distributions.categorical.Categorical,
-                                     deterministic_eval=True,
-                                     lr_scheduler=scheduler,
-                                     reward_normalization=False
-                                     )
+        # Entropy coefficient
+        entropy_coef = train_args["entropy_coef"]
+
+        # define PPO policy with entropy regularization
+        class PPOWithEntropy(ts.policy.PPOPolicy):
+            def __init__(self, *args, entropy_coef=entropy_coef, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.entropy_coef = entropy_coef
+
+            def get_loss(self, data: ts.data.Batch, dist, value, return_critic=False):
+                # Get the base PPO loss
+                loss = super().get_loss(data, dist, value, return_critic)
+
+                # Add entropy term
+                entropy = dist.entropy().mean()
+                loss -= self.entropy_coef * entropy  # Minimize negative entropy to encourage exploration
+
+                # Value function clipping: Clip the value predictions to the range [value - epsilon, value + epsilon]
+                value_clip_range = 0.2  # Clip the value predictions with epsilon
+                value_clipped = torch.clamp(value, -value_clip_range, value_clip_range)
+                loss += torch.mean((value - value_clipped) ** 2)  # Add the value clipping term to the loss
+
+                return loss
+
+        # Define PPO policy with added entropy
+        policy = PPOWithEntropy(
+            TianshouModuleWrapper(actor_net), critic_net, optim,
+            discount_factor=train_args["discount_factor"],
+            max_batchsize=train_args["max_batchsize"],
+            dist_fn=torch.distributions.categorical.Categorical,
+            deterministic_eval=True,
+            lr_scheduler=scheduler,
+            reward_normalization=False,
+            entropy_coef=train_args["entropy_coef"],
+            gae_lambda=0.95  # Set GAE lambda value for advantage estimation
+        )
         policy.action_type = "discrete"
 
-        # a tensorboard logger is available to monitor training results.
-        # log in the directory where all mdp results are stored:
+        # TensorBoard logging
         log_path = dynaplex.filepath(mdp.identifier(), "tensorboard_logs", model_name)
         writer = SummaryWriter(log_path)
         logger = TensorboardLogger(writer)
 
-        # create nr_envs train environments
+        # Create nr_envs train environments
         train_envs = ts.env.DummyVectorEnv(
             [get_env for _ in range(train_args["nr_train_envs"])]
         )
         collector = ts.data.Collector(policy, train_envs, ts.data.VectorReplayBuffer(train_args["replay_buffer_size"], train_args["nr_train_envs"]), exploration_noise=True, preprocess_fn=preprocess_function)
         collector.reset()
 
-        # create nr_envs test environments
+        # Create nr_envs test environments
         test_envs = ts.env.DummyVectorEnv(
             [get_test_env for _ in range(train_args["nr_test_envs"])]
         )
         test_collector = ts.data.Collector(policy, test_envs, exploration_noise=False, preprocess_fn=preprocess_function)
         test_collector.reset()
 
-        # train the policy
+        # Train the policy
         print("Starting training")
         policy.train()
         trainer = ts.trainer.OnpolicyTrainer(
             policy, collector, test_collector=test_collector,
-            # policy, collector, test_collector=None,
             max_epoch=train_args["max_epoch"],
             step_per_epoch=train_args["step_per_epoch"],
             step_per_collect=train_args["step_per_collect"],
@@ -170,13 +187,3 @@ if __name__ == '__main__':
         print(f'save location:{policy_path()}')
         result = trainer.run()
         print(f'Finished training!')
-
-    # load can order and periodic review policies from file
-
-    #policies = [dynaplex.load_policy(mdp, policy_path()), mdp.get_policy("canOrderPolicy"), mdp.get_policy("periodicReviewPolicy")]
-    policies = [dynaplex.load_policy(mdp, policy_path()), mdp.get_policy("random")]
-    comparer = dynaplex.get_comparer(mdp, number_of_trajectories=256, periods_per_trajectory=10000, rng_seed=12)
-
-    comparison = comparer.compare(policies)
-    result = [(item['policy']['id'], item['mean']) for item in comparison]
-    print(result)

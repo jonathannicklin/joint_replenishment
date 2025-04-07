@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <fstream>
 #include <vector>
+#include <numeric>
 #include "dynaplex/dynaplexprovider.h"
 #include "dynaplex/vargroup.h"
 #include "dynaplex/modelling/discretedist.h"
@@ -183,6 +184,7 @@ int evaluate() {
                 float serviceLevel = 0;
                 float fillRate = 0;
                 float periodicity = 0;
+                float itemsPerOrder = 0;
                 int64_t backorderCost = 0;
                 int64_t holdingCost = 0;
                 int64_t orderingCost = 0;
@@ -194,6 +196,7 @@ int evaluate() {
                 std::vector<int64_t> backorderPrior(nrProducts, 0);
                 std::vector<int64_t> backorderPost(nrProducts, 0);
                 std::vector<int64_t> orderQtyPrior(nrProducts, 0);
+                std::vector<float> itemOrders(nrProducts, 0);
                 bool final_reached = false;
 
                 // track and calculate KPIs
@@ -214,6 +217,11 @@ int evaluate() {
 
                             inventoryLevelPrior[j] = product.inventoryLevel;
                             orderQtyPrior[j] = product.orderQty[0]; // when event is incorporated, we lose this information
+
+                            // create list of number of orders each item is included within
+                            if (product.orderQty[leadTime - 1] != 0) {
+                                itemOrders[j] += 1;
+                            }
                         }
 
                         mdp->IncorporateEvent({ &trajectory,1 });
@@ -263,6 +271,10 @@ int evaluate() {
                 backorderCost = backorderCost / sampleNumber;
                 orderingCost = orderingCost / sampleNumber;
                 fillRate = fillRate / periodicity; // periodicity currently used as order counter
+                itemsPerOrder = std::accumulate(itemOrders.begin(), itemOrders.end(), 0) / periodicity;
+                for (int64_t k = 0;k < nrProducts;k++) {
+                    itemOrders[k] = itemOrders[k] / periodicity;
+                }
                 periodicity = periodicity / sampleNumber;
                 serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand; // change
 
@@ -278,6 +290,11 @@ int evaluate() {
                 kpis.Add("holdingCost", holdingCost);
                 kpis.Add("orderingCost", orderingCost);
                 kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
+                kpis.Add("itemsPerOrder", itemsPerOrder);
+                kpis.Add("Item1", itemOrders[0]);
+                kpis.Add("Item2", itemOrders[1]);
+                kpis.Add("Item3", itemOrders[2]);
+                kpis.Add("Item4", itemOrders[3]);
 
                 // output evaluation to a file
                 auto filename = dp.System().filepath("joint_replenishment", "Evaluation", evaluatePolicyList[k] + "_evaluation.json");
@@ -293,7 +310,7 @@ int evaluate() {
         if (dclEvaluate == true) {
 
             // get trained DCL policy
-            std::string gen = "10"; // change to correct gen
+            std::string gen = "2"; // change to correct gen
             std::cout << mdp->Identifier() << std::endl;
             auto filename = dp.System().filepath(mdp->Identifier(), "dcl_policy_gen" + gen); // DynaPlex_IO folder
             auto path = dp.System().filepath(filename);
@@ -321,6 +338,7 @@ int evaluate() {
             float serviceLevel = 0;
             float fillRate = 0;
             float periodicity = 0;
+            float itemsPerOrder = 0;
             int64_t backorderCost = 0;
             int64_t holdingCost = 0;
             int64_t orderingCost = 0;
@@ -332,6 +350,7 @@ int evaluate() {
             std::vector<int64_t> backorderPrior(nrProducts, 0);
             std::vector<int64_t> backorderPost(nrProducts, 0);
             std::vector<int64_t> orderQtyPrior(nrProducts, 0);
+            std::vector<float> itemOrders(nrProducts, 0);
             bool final_reached = false;
 
             // track and calculate KPIs
@@ -352,6 +371,11 @@ int evaluate() {
 
                         inventoryLevelPrior[j] = product.inventoryLevel;
                         orderQtyPrior[j] = product.orderQty[0]; // when event is incorporated, we lose this information
+
+                        // create list of number of orders each item is included within
+                        if (product.orderQty[leadTime - 1] != 0) {
+                            itemOrders[j] += 1;
+                        }
                     }
 
                     mdp->IncorporateEvent({ &trajectory,1 });
@@ -401,8 +425,12 @@ int evaluate() {
             backorderCost = backorderCost / sampleNumber;
             orderingCost = orderingCost / sampleNumber;
             fillRate = fillRate / periodicity; // periodicity currently used as order counter
+            itemsPerOrder = std::accumulate(itemOrders.begin(), itemOrders.end(), 0) / periodicity;
+            for (int64_t k = 0;k < nrProducts;k++) {
+                itemOrders[k] = itemOrders[k] / periodicity;
+            }
             periodicity = periodicity / sampleNumber;
-            serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand; // change
+            serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand;
 
             std::cout << "Total demand: " << totalDemand << std::endl;
             std::cout << "Total demand met: " << totalDemand - unmetDemand << std::endl;
@@ -416,6 +444,11 @@ int evaluate() {
             kpis.Add("holdingCost", holdingCost);
             kpis.Add("orderingCost", orderingCost);
             kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
+            kpis.Add("itemsPerOrder", itemsPerOrder);
+            kpis.Add("Item1", itemOrders[0]);
+            kpis.Add("Item2", itemOrders[1]);
+            kpis.Add("Item3", itemOrders[2]);
+            kpis.Add("Item4", itemOrders[3]);
 
             // output evaluation to a file
             filename = dp.System().filepath("joint_replenishment", "Evaluation", "dcl_evaluation.json");
@@ -456,6 +489,7 @@ int evaluate() {
             float serviceLevel = 0;
             float fillRate = 0;
             float periodicity = 0;
+            float itemsPerOrder = 0;
             int64_t backorderCost = 0;
             int64_t holdingCost = 0;
             int64_t orderingCost = 0;
@@ -467,6 +501,7 @@ int evaluate() {
             std::vector<int64_t> backorderPrior(nrProducts, 0);
             std::vector<int64_t> backorderPost(nrProducts, 0);
             std::vector<int64_t> orderQtyPrior(nrProducts, 0);
+            std::vector<float> itemOrders(nrProducts, 0);
             bool final_reached = false;
 
             // track and calculate KPIs
@@ -487,6 +522,11 @@ int evaluate() {
 
                         inventoryLevelPrior[j] = product.inventoryLevel;
                         orderQtyPrior[j] = product.orderQty[0]; // when event is incorporated, we lose this information
+
+                        // create list of number of orders each item is included within
+                        if (product.orderQty[leadTime - 1] != 0) {
+                            itemOrders[j] += 1;
+                        }
                     }
 
                     mdp->IncorporateEvent({ &trajectory,1 });
@@ -536,6 +576,10 @@ int evaluate() {
             backorderCost = backorderCost / sampleNumber;
             orderingCost = orderingCost / sampleNumber;
             fillRate = fillRate / periodicity; // periodicity currently used as order counter
+            itemsPerOrder = std::accumulate(itemOrders.begin(), itemOrders.end(), 0) / periodicity;
+            for (int64_t k = 0;k < nrProducts;k++) {
+                itemOrders[k] = itemOrders[k] / periodicity;
+            }
             periodicity = periodicity / sampleNumber;
             serviceLevel = (static_cast<float>(totalDemand) - unmetDemand) / totalDemand; // change
 
@@ -551,6 +595,11 @@ int evaluate() {
             kpis.Add("holdingCost", holdingCost);
             kpis.Add("orderingCost", orderingCost);
             kpis.Add("totalCost", trajectory.CumulativeReturn / sampleNumber);
+            kpis.Add("itemsPerOrder", itemsPerOrder);
+            kpis.Add("Item1", itemOrders[0]);
+            kpis.Add("Item2", itemOrders[1]);
+            kpis.Add("Item3", itemOrders[2]);
+            kpis.Add("Item4", itemOrders[3]);
 
             // output evaluation to a file
             filename = dp.System().filepath("joint_replenishment", "Evaluation", "ppo_evaluation.json");
@@ -574,7 +623,6 @@ int heatMap() {
 
         // get model information
         auto& dp = DynaPlexProvider::Get();
-        // auto& system = dp.System();
         std::string model_name = "joint_replenishment";
         std::string mdp_config_name = "mdp_config_0.json";
 
@@ -584,12 +632,18 @@ int heatMap() {
 
         auto policy = mdp->GetPolicy("random");
         
+        // change one to be true; set the others to false
         bool ruleBasedEvaluate = false;
         bool dclEvaluate = true;
         bool ppoEvaluate = false;
 
         if (ruleBasedEvaluate == true) {
-
+            // get rule-based policy
+            std::vector<std::string> evaluatePolicyList = { "canOrderPolicy" };
+            std::string policy_config_name = "policy_config_0.json"; // 1 = can order 2 = periodic review
+            std::string policy_file_path = dp.System().filepath("mdp_config_examples", model_name, policy_config_name);
+            VarGroup evaluatePolicy = VarGroup::LoadFromFile(policy_file_path);
+            auto policy = mdp->GetPolicy(evaluatePolicy);
         }
 
         if (dclEvaluate == true) {
@@ -602,12 +656,15 @@ int heatMap() {
         }
 
         if (ppoEvaluate == true) {
-
+            // get ppo policy
+            auto filename = dp.System().filepath(mdp->Identifier(), "ppo_policy"); // DynaPlex_IO folder
+            auto path = dp.System().filepath(filename);
+            auto ppoPolicy = dp.LoadPolicy(mdp, path);
         }
 
         //get some initializing variables from json
-        std::vector<int64_t> initialForecast;
-        std::vector<int64_t> initialSigma;
+        std::vector<double> initialForecast;
+        std::vector<double> initialSigma;
         int64_t nrProducts;
         int64_t leadTime;
 
@@ -618,103 +675,418 @@ int heatMap() {
 
         // define heat map parameters
         int64_t item1 = 0;
-        int64_t item2 = 1;
-        int64_t maxInventoryPosition = 60; // set by looking at inventory plot
+        int64_t item2 = 3;
+        int64_t maxInventoryPosition = 90; // set by looking at inventory plot
+        int64_t actionIndex = 0; // 0 = order; 1 = amount
+        int64_t inventory2 = 25;
+        int64_t inventory3 = 45;
+        int64_t inventory4 = 15;
+        int64_t order1;
+        int64_t order2;
+        int64_t order3;
 
         // define container variables
         std::vector<int64_t> actions;
 
-        struct SKU {
-            int64_t skuNumber;
-            double forecastedDemand;
-            double forecastDeviation;
-            double inventoryLevel;
-            std::vector<int64_t> orderQty;
-
-            // assign SKU features to a DynaPlex::Features object
-            void AddSKUToFeatures(DynaPlex::Features& feats) const {
-                feats.Add(forecastedDemand);
-                feats.Add(forecastDeviation);
-                feats.Add(inventoryLevel);
-                feats.Add(orderQty);
-            }
-
-            // converts SKU data into a DynaPlex::VarGroup object
-            DynaPlex::VarGroup ToVarGroup() const {
-                DynaPlex::VarGroup vars;
-                vars.Add("skuNumber", skuNumber);
-                vars.Add("forecastedDemand", forecastedDemand);
-                vars.Add("forecastDeviation", forecastDeviation);
-                vars.Add("inventoryLevel", inventoryLevel);
-                vars.Add("orderQty", orderQty);
-                return vars;
-            }
-
-            // initialise an empty SKU object
-            SKU() {}
-
-            // initialises an SKU object using data from DynaPlex::VarGroup
-            explicit SKU(const DynaPlex::VarGroup& vars) {
-                vars.Get("skuNumber", skuNumber);
-                vars.Get("forecastedDemand", forecastedDemand);
-                vars.Get("forecastDeviation", forecastDeviation);
-                vars.Get("inventoryLevel", inventoryLevel);
-                vars.Get("orderQty", orderQty);
-            }
-
-            // compares two SKU objects for equality
-            bool operator==(const SKU& other) const = default;
-        };
-
-
-        for (int inventoryPosition1 = 0; inventoryPosition1 < maxInventoryPosition; inventoryPosition1++) {
-            for (int inventoryPosition2 = 0; inventoryPosition2 < maxInventoryPosition; inventoryPosition2++) {
-                auto SKUs = std::vector<SKU>{};
-                SKUs.reserve(nrProducts);
-
-                // creates multiple SKU objects equal to nrProducts
-                for (size_t i = 0; i < nrProducts; i++) {
-                    SKU item{};
-                    item.skuNumber = i;
-                    item.forecastedDemand = initialForecast[i];
-                    item.forecastDeviation = initialSigma[i];
-                    if (i == item1) {
-                        item.inventoryLevel = inventoryPosition1;
-                    }
-                    else if (i == item2) {
-                        item.inventoryLevel = inventoryPosition2;
-                    }
-                    else {
-                        item.inventoryLevel = initialForecast[i];
-                    }
-                    item.orderQty.resize(leadTime, 0);
-                    SKUs.push_back(item);
-                }
+        for (int inventoryPosition1 = -10; inventoryPosition1 < maxInventoryPosition; inventoryPosition1++) {
+            for (int inventoryPosition2 = -10; inventoryPosition2 < maxInventoryPosition; inventoryPosition2++) {
                 
                 DynaPlex::VarGroup stateVars{
-                    {"cat", StateCategory::AwaitAction().ToVarGroup()}, // change this to ordering 
+                    {"cat", StateCategory::AwaitAction(0).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                    {"SKUs", std::vector<DynaPlex::VarGroup>{
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 0},
+                            {"forecastedDemand", initialForecast[0]},
+                            {"forecastDeviation", initialSigma[0]},
+                            {"inventoryLevel", inventoryPosition1},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 1},
+                            {"forecastedDemand", initialForecast[1]},
+                            {"forecastDeviation", initialSigma[1]},
+                            {"inventoryLevel", inventoryPosition2},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 2},
+                            {"forecastedDemand", initialForecast[2]},
+                            {"forecastDeviation", initialSigma[2]},
+                            {"inventoryLevel", inventory3},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 3},
+                            {"forecastedDemand", initialForecast[3]},
+                            {"forecastDeviation", initialSigma[3]},
+                            {"inventoryLevel", inventory4},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        }
+                    }},
                     {"usedCapacity", 0},
-                    {"SKUs", SKUs},
                     {"remainingEvents", 100},
-                    {"orderItem", item2},
+                    {"orderItem", item1},
                     {"periodOrderingCosts", 0},
                     {"periodHoldingCosts", 0},
                     {"periodBackorderCosts", 0},
-                    {"periodCount", 1000}
+                    {"periodCount", 1000},
                 };
 
                 auto state = mdp->GetState(stateVars); // use stateVars input to generate state
-                //state
-
-                std::vector<Trajectory> trajVec{};
-
+                std::vector<Trajectory> trajVec(1);
                 mdp->InitiateState({ &trajVec[0] ,1 }, state);
                 policy->SetAction(trajVec);
 
-                actions.push_back(trajVec[0].NextAction);
+                // pass if no order will be made
+                if (trajVec[0].NextAction == 0) {
+                    actions.push_back(trajVec[0].NextAction);
+                }
+                
+                // first simulate item 1 being ordered
+                else {
+                    DynaPlex::VarGroup stateVars{
+                    {"cat", StateCategory::AwaitAction(1).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                    {"SKUs", std::vector<DynaPlex::VarGroup>{
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 0},
+                            {"forecastedDemand", initialForecast[0]},
+                            {"forecastDeviation", initialSigma[0]},
+                            {"inventoryLevel", inventoryPosition1},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 1},
+                            {"forecastedDemand", initialForecast[1]},
+                            {"forecastDeviation", initialSigma[1]},
+                            {"inventoryLevel", inventoryPosition2},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 2},
+                            {"forecastedDemand", initialForecast[2]},
+                            {"forecastDeviation", initialSigma[2]},
+                            {"inventoryLevel", inventory3},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        },
+                        DynaPlex::VarGroup{
+                            {"skuNumber", 3},
+                            {"forecastedDemand", initialForecast[3]},
+                            {"forecastDeviation", initialSigma[3]},
+                            {"inventoryLevel", inventory4},
+                            {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                        }
+                    }},
+                    {"usedCapacity", 0},
+                    {"remainingEvents", 100},
+                    {"orderItem", item1},
+                    {"periodOrderingCosts", 0},
+                    {"periodHoldingCosts", 0},
+                    {"periodBackorderCosts", 0},
+                    {"periodCount", 1000},
+                    };
+
+                    auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                    std::vector<Trajectory> trajVec(1);
+                    mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                    policy->SetAction(trajVec);
+                    order1 = trajVec[0].NextAction;
+
+
+                    // simulate how the ordering process works
+                    if (item2 >= 1) {
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(0).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", item1},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                    }
+
+                    if (item2 >= 1 && actionIndex == 1 && trajVec[0].NextAction == 1) { // if action = 1; item 2 should be ordered
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(1).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", 1},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                        order2 = trajVec[0].NextAction;
+                    }
+
+                    if (item2 >= 2) {
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(0).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order2}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", item1},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                    }
+
+                    if (item2 >= 2 && actionIndex == 1 && trajVec[0].NextAction == 2) { // if action = 2; item 3 should be ordered
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(1).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order2}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", 2},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                        order3 = trajVec[0].NextAction;
+                    }
+
+                    if (item2 >= 3) {
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(0).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order2}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order3}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", 2},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                    }
+
+                    if (item2 >= 3 && actionIndex == 1 && trajVec[0].NextAction == 3) { // if action = 3; item 4 should be ordered
+                        DynaPlex::VarGroup stateVars{
+                        {"cat", StateCategory::AwaitAction(1).ToVarGroup()}, // AwaitAction(0) -> item selection AwaitAction(1) -> order quantity
+                        {"SKUs", std::vector<DynaPlex::VarGroup>{
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 0},
+                                {"forecastedDemand", initialForecast[0]},
+                                {"forecastDeviation", initialSigma[0]},
+                                {"inventoryLevel", inventoryPosition1},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order1}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 1},
+                                {"forecastedDemand", initialForecast[1]},
+                                {"forecastDeviation", initialSigma[1]},
+                                {"inventoryLevel", inventoryPosition2},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order2}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 2},
+                                {"forecastedDemand", initialForecast[2]},
+                                {"forecastDeviation", initialSigma[2]},
+                                {"inventoryLevel", inventory3},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, order3}}
+                            },
+                            DynaPlex::VarGroup{
+                                {"skuNumber", 3},
+                                {"forecastedDemand", initialForecast[3]},
+                                {"forecastDeviation", initialSigma[3]},
+                                {"inventoryLevel", inventory4},
+                                {"orderQty", std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+                            }
+                        }},
+                        {"usedCapacity", 0},
+                        {"remainingEvents", 100},
+                        {"orderItem", 3},
+                        {"periodOrderingCosts", 0},
+                        {"periodHoldingCosts", 0},
+                        {"periodBackorderCosts", 0},
+                        {"periodCount", 1000},
+                        };
+
+                        auto state = mdp->GetState(stateVars); // use stateVars input to generate state
+                        std::vector<Trajectory> trajVec(1);
+                        mdp->InitiateState({ &trajVec[0] ,1 }, state);
+                        policy->SetAction(trajVec);
+                    }
+
+                    actions.push_back(trajVec[0].NextAction);
+                }
             };
 
-            //just an example of storing the variables after evaluation
             VarGroup kpis{};
             kpis.Add("actions", actions);
 
@@ -723,8 +1095,7 @@ int heatMap() {
         }
     }
 
-    catch (const DynaPlex::Error& e)
-    {
+    catch (const DynaPlex::Error& e) {
         std::cout << e.what() << std::endl;
     }
 
@@ -734,6 +1105,6 @@ int heatMap() {
 int main() {
 
     // train();
-    // evaluate();
-    heatMap();
+    evaluate();
+    // heatMap();
 };
